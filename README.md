@@ -4,22 +4,23 @@ This repository uses a GitHub Actions workflow to automate the deployment of AWS
 
 ## Features 💥
 
-- Deploys all Lambda functions in `app/function/`-style directories
+- Deploys all Lambda functions in `lambdas/app/function/`-style directories
 - Automatically zips and uploads code to S3
 - Creates or updates Lambda functions using configuration from `config.json`
 - Publishes a new version after each successful deployment
 - Updates the appropriate alias based on the branch name
-- Skips unchanged functions by comparing commit diffs with `main`
+- Skips unchanged functions by comparing commit diffs
 
 ## Directory Structure 📁
 
 Each Lambda function should live in its own subdirectory and include a `config.json` file:
 
 ```
-app/
+lambdas/
+  app/
     function/
-        index.js
-        config.json
+      index.js
+      config.json
 ```
 
 ### Example `config.json`:
