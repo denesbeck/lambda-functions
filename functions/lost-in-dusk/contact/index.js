@@ -9,7 +9,7 @@ const fetchSecrets = async () => {
   const client = new SSMClient({ region: "eu-central-1" });
   const input = {
     Names: [
-      "/lostindusk.com/contact/reCAPTCHA/SECRET_KEY",
+      "/lostindusk.com/contact/CF/SECRET_KEY",
       "/lostindusk.com/contact/ses/HOST",
       "/lostindusk.com/contact/ses/PASSWORD",
       "/lostindusk.com/contact/ses/TARGET",
@@ -28,11 +28,11 @@ const fetchSecrets = async () => {
   return params;
 };
 
-// reCAPTCHA validation
-const validateReCaptcha = async (token, secretKey) => {
+// CF Turnstile validation
+const validateCFTurnstile = async (token, secretKey) => {
   try {
     const { data } = await axios.post(
-      "https://www.google.com/recaptcha/api/siteverify",
+      "https://challenges.cloudflare.com/turnstile/v0/siteverify",
       querystring.stringify({
         secret: secretKey,
         response: token,
@@ -45,11 +45,11 @@ const validateReCaptcha = async (token, secretKey) => {
     );
 
     if (!data.success) {
-      console.warn("reCAPTCHA failed:", data["error-codes"]);
+      console.warn("CF Turnstile validation failed:", data["error-codes"]);
     }
     return data.success;
   } catch (err) {
-    console.error("reCAPTCHA validation error", err);
+    console.error("CF Turnstile validation error", err);
     return null;
   }
 };
@@ -101,7 +101,7 @@ export const handler = async (event) => {
 
     const params = await fetchSecrets();
 
-    const isHuman = await validateReCaptcha(token, params.SECRET_KEY);
+    const isHuman = await validateCFTurnstile(token, params.SECRET_KEY);
     if (isHuman === null) {
       return {
         statusCode: 500,
@@ -112,7 +112,7 @@ export const handler = async (event) => {
     if (!isHuman) {
       return {
         statusCode: 403,
-        body: JSON.stringify({ message: "Failed reCAPTCHA verification." }),
+        body: JSON.stringify({ message: "Failed CF Turnstile verification." }),
       };
     }
 
