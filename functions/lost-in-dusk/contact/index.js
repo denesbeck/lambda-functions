@@ -91,7 +91,8 @@ export const handler = async (event) => {
   };
 
   try {
-    const { token, name, email, message } = JSON.parse(event.body);
+    const eventBody = JSON.parse(event.body);
+    const { token, name, email, message } = JSON.parse(eventBody.body);
 
     // Basic validation
     if (
