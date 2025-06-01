@@ -83,6 +83,13 @@ const sendEmail = async (params, name, email, message) => {
 
 // Lambda handler
 export const handler = async (event) => {
+  const headers = {
+    "Access-Control-Allow-Origin": "https://lostindusk.com",
+    "Access-Control-Allow-Headers":
+      "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token",
+    "Access-Control-Allow-Methods": "OPTIONS,POST",
+  };
+
   try {
     const { token, name, email, message } = JSON.parse(event.body);
 
@@ -95,6 +102,7 @@ export const handler = async (event) => {
     ) {
       return {
         statusCode: 400,
+        headers,
         body: JSON.stringify({ message: "Invalid input." }),
       };
     }
@@ -105,6 +113,7 @@ export const handler = async (event) => {
     if (isHuman === null) {
       return {
         statusCode: 500,
+        headers,
         body: JSON.stringify({ message: "Internal server error." }),
       };
     }
@@ -112,6 +121,7 @@ export const handler = async (event) => {
     if (!isHuman) {
       return {
         statusCode: 403,
+        headers,
         body: JSON.stringify({ message: "Failed CF Turnstile verification." }),
       };
     }
@@ -120,18 +130,21 @@ export const handler = async (event) => {
     if (!emailSent) {
       return {
         statusCode: 502,
+        headers,
         body: JSON.stringify({ message: "Failed to send email." }),
       };
     }
 
     return {
       statusCode: 200,
+      headers,
       body: JSON.stringify({ message: "Success!" }),
     };
   } catch (err) {
     console.error("Unhandled exception:", err);
     return {
       statusCode: 500,
+      headers,
       body: JSON.stringify({ message: "Server error." }),
     };
   }
