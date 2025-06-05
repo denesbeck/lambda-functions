@@ -116,6 +116,11 @@ jobs:
                 --region "$REGION"
             fi
 
+            # Wait for function update to finish
+            aws lambda wait function-updated \
+              --function-name "$FUNCTION_NAME" \
+              --region "$REGION"
+
             echo "Updating layers for ${FUNCTION_NAME}..."
             aws lambda update-function-configuration \
             --function-name "$FUNCTION_NAME" \
