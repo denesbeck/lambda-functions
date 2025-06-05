@@ -85,7 +85,7 @@ jobs:
 
             echo "Zipping $path..."
             cd "$path"
-            ./scripts/install-packages.sh "$TYPE"
+            ../../scripts/install-packages.sh "$TYPE"
 
             zip -r "../../$ZIP_FILE" . > /dev/null
             cd - > /dev/null
