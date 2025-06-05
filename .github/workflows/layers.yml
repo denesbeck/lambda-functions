@@ -1,0 +1,150 @@
+name: Deploy Lambda Layers
+
+on:
+  push:
+    branches:
+      - "**"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      S3_BUCKET: ${{ vars.LAYERS_S3_BUCKET }}
+      REGION: ${{ vars.REGION }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
+      - name: Set up AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.REGION }}
+
+      - name: Get layer directories
+        id: layer_dirs
+        run: |
+          echo "Detecting changed layer directories..."
+          BEFORE=${{ github.event.before }}
+          AFTER=${{ github.event.after }}
+
+          if git cat-file -e "$BEFORE"^{commit} &>/dev/null; then
+            echo "Commit $BEFORE found."
+            DIRS=$(git diff --name-only "$BEFORE" "$AFTER" | awk -F/ '$1 == "layers" && NF>=2 && $1 !~ /^\./ && $2 !~ /^\./ {print $1 "/" $2}' | sort -u)
+          else
+            echo "Commit $BEFORE NOT found. First commit."
+            DIRS=$(find . -mindepth 2 -maxdepth 2 -type d -not -path '*/.*' | cut -c 3- | sort -u | awk -F/ '$1 == "layers"')
+          fi
+
+          if [[ -z "$DIRS" ]]; then
+            echo "No changed layer directories found. Skipping deployment."
+          else
+            echo "Changed layer directories:"
+            echo "$DIRS"
+            echo "dirs<<EOF" >> $GITHUB_OUTPUT
+            echo "$DIRS" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Package and deploy layers
+        if: steps.layer_dirs.outputs.dirs != ''
+        run: |
+          set -euo pipefail
+
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
+          COMMIT_SHA=${{ github.sha }}
+          BRANCH="${{ github.ref_name }}"
+
+          # Determine alias from branch name
+          get_alias() {
+            case "$1" in
+              main)
+                echo "prod"
+                ;;
+              test/*)
+                echo "test"
+                ;;
+              release/*)
+                echo "staging"
+                ;;
+              feature/*)
+                echo "dev"
+                ;;
+              *)
+                echo "dev"
+                ;;
+            esac
+          }
+
+          install_packages(){
+            case "$1" in
+              node)
+                npm install
+              ;;
+              golang)
+                go mod tidy
+              ;;
+              ruby)
+                bundle install
+              ;;
+              pip)
+                pip install -r requirements.txt
+              ;;
+            esac
+          }
+
+          DEPLOY_ALIAS=$(get_alias "$BRANCH")
+          echo "Branch '$BRANCH' will deploy to alias: $DEPLOY_ALIAS"
+
+          while IFS= read -r path; do
+            LAYER=$(basename "$path")
+
+            CONFIG_FILE="${path}/config.json"
+            if [[ ! -f "$CONFIG_FILE" ]]; then
+              echo "Missing config.json in $path, skipping..."
+              continue
+            fi
+
+            LAYER_NAME=$(jq -r .name "$CONFIG_FILE")
+            DESCRIPTION=$(jq -r .description "$CONFIG_FILE")
+            TYPE=$(jq -r .type "$CONFIG_FILE")
+            COMPATIBLE_RUNTIMES=$(jq -c .runtimes "$CONFIG_FILE")
+
+            ZIP_FILE="${LAYER}-${TIMESTAMP}-${COMMIT_SHA}.zip"
+            S3_KEY="${LAYER}/${ZIP_FILE}"
+
+            echo "Zipping $path..."
+            cd "$path"
+            install_packages "$TYPE"
+
+            zip -r "../../$ZIP_FILE" . > /dev/null
+            cd - > /dev/null
+
+            echo "Uploading to s3://${S3_BUCKET}/${S3_KEY}"
+            aws s3 cp "$ZIP_FILE" "s3://${S3_BUCKET}/${S3_KEY}"
+
+            echo "Publishing new layer version..."
+            ACCOUNT_NUMBER=$(aws sts get-caller-identity --query Account --output text)
+            VERSION=$(aws lambda publish-layer-version \
+          --layer-name "arn:aws:lambda:$REGION:$ACCOUNT_NUMBER:layer:$LAYER_NAME" \
+              --description "$DESCRIPTION" \
+              --content S3Bucket="$S3_BUCKET",S3Key="$S3_KEY" \
+              --compatible-runtimes "$COMPATIBLE_RUNTIMES" \
+              --region "$REGION" \
+              --output text \
+              --query 'Version')
+
+            echo "Published version $VERSION of $LAYER_NAME"
+
+            echo "Cleaning up..."
+            rm "$ZIP_FILE"
+
+          done <<< "${{ steps.layer_dirs.outputs.dirs }}"
