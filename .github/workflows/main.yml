@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
+      FUNCTIONS_S3_BUCKET: ${{ vars.FUNCTIONS_S3_BUCKET }}
       LAYERS_S3_BUCKET: ${{ vars.LAYERS_S3_BUCKET }}
       REGION: ${{ vars.REGION }}
 
