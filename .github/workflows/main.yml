@@ -27,8 +27,7 @@ jobs:
       - name: Set up AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: arn:aws:iam::874820004530:role/GitHubActionsDeployRole
           aws-region: ${{ vars.REGION }}
 
       - name: Download previous hash files from S3
@@ -40,8 +39,8 @@ jobs:
             FUNC=$(basename "$func_dir")
             TARGET=".hash-cache/functions/$APP/$FUNC"
             mkdir -p "$TARGET"
-            aws s3 cp "s3://${HASHES_S3_BUCKET}/$BRANCH/$APP-$FUNC.code.hash" "$TARGET/.code.hash" || true
-            aws s3 cp "s3://${HASHES_S3_BUCKET}/$BRANCH/$APP-$FUNC.config.hash" "$TARGET/.config.hash" || true
+            aws s3 cp "s3://${HASHES_S3_BUCKET}/functions/$BRANCH/$APP-$FUNC.code.hash" "$TARGET/.code.hash" || true
+            aws s3 cp "s3://${HASHES_S3_BUCKET}/functions/$BRANCH/$APP-$FUNC.config.hash" "$TARGET/.config.hash" || true
           done
 
       - name: Get layer directories
@@ -305,5 +304,5 @@ jobs:
             APP=$(basename "$(dirname "$(dirname "$file")")")
             FUNC=$(basename "$(dirname "$file")")
             NAME=$(basename "$file")
-            aws s3 cp "$file" "s3://${HASHES_S3_BUCKET}/$BRANCH/$APP-$FUNC$NAME"
+            aws s3 cp "$file" "s3://${HASHES_S3_BUCKET}/functions/$BRANCH/$APP-$FUNC$NAME"
           done
