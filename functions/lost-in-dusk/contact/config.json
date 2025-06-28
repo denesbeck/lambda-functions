@@ -2,7 +2,7 @@
   "function_name": "LostInDuskContact",
   "runtime": "nodejs22.x",
   "handler": "index.handler",
-  "role": "arn:aws:iam::874820004530:role/LostInDuskContactLambdaRole",
+  "role": "arn:aws:iam::874820004530:role/LostInDuskContactRole",
   "layers": [
     "arn:aws:lambda:eu-central-1:874820004530:layer:Axios:14",
     "arn:aws:lambda:eu-central-1:874820004530:layer:Validator:12"
