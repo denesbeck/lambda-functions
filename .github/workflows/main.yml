@@ -246,14 +246,8 @@ jobs:
                   --s3-key "$S3_KEY" \
                   --region "$REGION"
               else
-                echo "Creating Lambda ${FUNCTION_NAME}..."
-                aws lambda create-function \
-                  --function-name "$FUNCTION_NAME" \
-                  --runtime "$RUNTIME" \
-                  --role "$IAM_ROLE_ARN" \
-                  --handler "$HANDLER" \
-                  --code S3Bucket="$FUNCTIONS_S3_BUCKET",S3Key="$S3_KEY" \
-                  --region "$REGION"
+                echo "Missing Lambda function: ${FUNCTION_NAME}, skipping..."
+                continue
               fi
 
               # Wait for function update to finish
