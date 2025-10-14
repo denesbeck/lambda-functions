@@ -105,7 +105,7 @@ jobs:
             RUNTIME=$(jq -r .runtime "$CONFIG_FILE")
             HANDLER=$(jq -r .handler "$CONFIG_FILE")
             IAM_ROLE_ARN=$(jq -r .role "$CONFIG_FILE")
-            LAYERS=$(jq -r .layers "$CONFIG_FILE")
+            LAYERS=$(jq -r '.layers | join(" ")' "$CONFIG_FILE")
 
             ZIP_FILE="${FUNCTION_NAME}-${TIMESTAMP}-${COMMIT_SHA}.zip"
             S3_KEY="${APP}/${LAMBDA}/${ZIP_FILE}"
