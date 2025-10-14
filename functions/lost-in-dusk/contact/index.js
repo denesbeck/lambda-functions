@@ -71,7 +71,6 @@ const sendEmail = async (params, name, email, message) => {
       },
     },
     Source: params.SOURCE,
-    ReplyToAddresses: [email],
   });
 
   try {
