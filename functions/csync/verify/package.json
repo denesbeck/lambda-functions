@@ -1,0 +1,8 @@
+{
+  "name": "csync/verify",
+  "version": "1.0.0",
+  "main": "index.js",
+  "author": "Denes Beck",
+  "license": "ISC",
+  "type": "module"
+}
