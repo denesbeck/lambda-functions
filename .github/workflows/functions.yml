@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      S3_BUCKET: ${{ vars.S3_BUCKET }}
+      S3_BUCKET: ${{ vars.FUNCTIONS_S3_BUCKET }}
       REGION: ${{ vars.REGION }}
 
     steps:
@@ -30,16 +30,15 @@ jobs:
           aws-region: ${{ vars.REGION }}
 
       - name: Get Lambda directories
-        id: dirs
+        id: function_dirs
         run: |
-          echo "Finding Lambda directories..."
-
-          DIRS=""
+          echo "Detecting changed Lambda directories..."
           BEFORE=${{ github.event.before }}
           AFTER=${{ github.event.after }}
+
           if git cat-file -e "$BEFORE"^{commit} &>/dev/null; then
             echo "Commit $BEFORE found."
-            DIRS=$(git diff --name-only "$BEFORE" "$AFTER" | awk -F/ 'NF>=3 && $1 !~ /^\./ && $2 !~ /^\./ && $3 !~ /^\./ {print $1 "/" $2 "/" $3}' | sort -u)
+            DIRS=$(git diff --name-only "$BEFORE" "$AFTER" | awk -F/ '$1 == "functions" && NF>=3 && $1 !~ /^\./ && $2 !~ /^\./ && $3 !~ /^\./ {print $1 "/" $2 "/" $3}' | sort -u)
           else
             echo "Commit $BEFORE NOT found. First commit."
             DIRS=$(find . -mindepth 3 -maxdepth 3 -type d -not -path '*/.*' | cut -c 3- | sort -u)
@@ -50,14 +49,13 @@ jobs:
           else
             echo "Changed Lambda directories:"
             echo "$DIRS"
-
             echo "dirs<<EOF" >> $GITHUB_OUTPUT
             echo "$DIRS" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
           fi
 
       - name: Zip, upload to S3, and deploy Lambda
-        if: steps.dirs.outputs.dirs != ''
+        if: steps.function_dirs.outputs.dirs != ''
         run: |
           set -euo pipefail
 
@@ -165,4 +163,4 @@ jobs:
             echo "Cleaning up..."
             rm "$ZIP_FILE"
 
-          done <<< "${{ steps.dirs.outputs.dirs }}"
+          done <<< "${{ steps.function_dirs.outputs.dirs }}"
