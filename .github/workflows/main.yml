@@ -176,7 +176,6 @@ jobs:
 
             APP=$(echo "$path" | cut -d'/' -f2)
             LAMBDA=$(echo "$path" | cut -d'/' -f3)
-            FUNCTION_NAME="${APP}-${LAMBDA}"
 
             CONFIG_FILE="${path}/config.json"
             if [[ ! -f "$CONFIG_FILE" ]]; then
@@ -184,13 +183,15 @@ jobs:
               continue
             fi
 
+            FUNCTION_NAME=$(jq -r .function_name "$CONFIG_FILE")
             RUNTIME=$(jq -r .runtime "$CONFIG_FILE")
             HANDLER=$(jq -r .handler "$CONFIG_FILE")
             IAM_ROLE_ARN=$(jq -r .role "$CONFIG_FILE")
             LAYERS=$(jq -r '.layers | join(" ")' "$CONFIG_FILE")
 
             CODE_HASH_FILE="$path/.code.hash"
-            CONFIG_HASH_FILE="$path/.config.hash"            LAST_HASH_PATH=".hash-cache/$path/.code.hash"
+            CONFIG_HASH_FILE="$path/.config.hash"            
+            LAST_HASH_PATH=".hash-cache/$path/.code.hash"
             LAST_CONFIG_HASH_FILE=".hash-cache/$path/.config.hash"
             DEPLOY_CODE=false
             UPDATE_CONFIG=false
@@ -225,7 +226,7 @@ jobs:
             fi
 
             if [[ "$DEPLOY_CODE" == true ]]; then
-              ZIP_FILE="${FUNCTION_NAME}-${TIMESTAMP}-${COMMIT_SHA}.zip"
+              ZIP_FILE="${APP}-${LAMBDA}-${TIMESTAMP}-${COMMIT_SHA}.zip"
               S3_KEY="${APP}/${LAMBDA}/${ZIP_FILE}"
 
               echo "Zipping $path to $ZIP_FILE"
