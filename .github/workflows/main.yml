@@ -12,6 +12,7 @@ jobs:
     env:
       FUNCTIONS_S3_BUCKET: ${{ vars.FUNCTIONS_S3_BUCKET }}
       LAYERS_S3_BUCKET: ${{ vars.LAYERS_S3_BUCKET }}
+      HASHES_S3_BUCKET: ${{ vars.HASHES_S3_BUCKET }}
       REGION: ${{ vars.REGION }}
 
     steps:
@@ -30,12 +31,26 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ vars.REGION }}
 
+      - name: Download previous hash files from S3
+        run: |
+          mkdir -p .hash-cache
+          BRANCH="${{ github.ref_name }}"
+          find functions -mindepth 2 -maxdepth 2 -type d | while read func_dir; do
+            APP=$(basename "$(dirname "$func_dir")")
+            FUNC=$(basename "$func_dir")
+            TARGET=".hash-cache/functions/$APP/$FUNC"
+            mkdir -p "$TARGET"
+            aws s3 cp "s3://${HASHES_S3_BUCKET}/$BRANCH/$APP-$FUNC.code.hash" "$TARGET/.code.hash" || true
+            aws s3 cp "s3://${HASHES_S3_BUCKET}/$BRANCH/$APP-$FUNC.config.hash" "$TARGET/.config.hash" || true
+          done
+
       - name: Get layer directories
         id: layer_dirs
         run: |
           echo "Detecting changed layer directories..."
           BEFORE=${{ github.event.before }}
           AFTER=${{ github.event.after }}
+          DIRS=""
 
           if git cat-file -e "$BEFORE"^{commit} &>/dev/null; then
             echo "Commit $BEFORE found."
@@ -97,7 +112,7 @@ jobs:
             echo "Publishing new layer version..."
             ACCOUNT_NUMBER=$(aws sts get-caller-identity --query Account --output text)
             VERSION=$(aws lambda publish-layer-version \
-          --layer-name "arn:aws:lambda:$REGION:$ACCOUNT_NUMBER:layer:$LAYER_NAME" \
+              --layer-name "arn:aws:lambda:$REGION:$ACCOUNT_NUMBER:layer:$LAYER_NAME" \
               --description "$DESCRIPTION" \
               --content S3Bucket="$LAYERS_S3_BUCKET",S3Key="$S3_KEY" \
               --compatible-runtimes "$COMPATIBLE_RUNTIMES" \
@@ -118,6 +133,7 @@ jobs:
           echo "Detecting changed Lambda directories..."
           BEFORE=${{ github.event.before }}
           AFTER=${{ github.event.after }}
+          DIRS=""
 
           if git cat-file -e "$BEFORE"^{commit} &>/dev/null; then
             echo "Commit $BEFORE found."
@@ -136,6 +152,9 @@ jobs:
             echo "$DIRS" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
           fi
+
+      - name: Generate code and config hashes
+        run: bash ./scripts/generate-function-hashes.sh
 
       - name: Zip, upload to S3, and deploy Lambda
         if: steps.function_dirs.outputs.dirs != ''
@@ -167,75 +186,124 @@ jobs:
             IAM_ROLE_ARN=$(jq -r .role "$CONFIG_FILE")
             LAYERS=$(jq -r '.layers | join(" ")' "$CONFIG_FILE")
 
-            ZIP_FILE="${FUNCTION_NAME}-${TIMESTAMP}-${COMMIT_SHA}.zip"
-            S3_KEY="${APP}/${LAMBDA}/${ZIP_FILE}"
+            CODE_HASH_FILE="$path/.code.hash"
+            CONFIG_HASH_FILE="$path/.config.hash"            LAST_HASH_PATH=".hash-cache/$path/.code.hash"
+            LAST_CONFIG_HASH_FILE=".hash-cache/$path/.config.hash"
+            DEPLOY_CODE=false
+            UPDATE_CONFIG=false
 
-            echo "Zipping $path to $ZIP_FILE"
-            cd "$path"
-            zip -r "../../../$ZIP_FILE" . > /dev/null
-            cd - > /dev/null
-
-            echo "Uploading to s3://${FUNCTIONS_S3_BUCKET}/${S3_KEY}"
-            aws s3 cp "$ZIP_FILE" "s3://${FUNCTIONS_S3_BUCKET}/${S3_KEY}"
-
-            echo "Checking if Lambda function ${FUNCTION_NAME} exists..."
-            if aws lambda get-function --function-name "$FUNCTION_NAME" --region "$REGION" >/dev/null 2>&1; then
-              echo "Updating Lambda ${FUNCTION_NAME}..."
-              aws lambda update-function-code \
-                --function-name "$FUNCTION_NAME" \
-                --s3-bucket "$FUNCTIONS_S3_BUCKET" \
-                --s3-key "$S3_KEY" \
-                --region "$REGION"
+            if [[ ! -f "$LAST_HASH_PATH" ]]; then
+              echo "No previous code hash — will deploy"
+              DEPLOY_CODE=true
             else
-              echo "Creating Lambda ${FUNCTION_NAME}..."
-              aws lambda create-function \
-                --function-name "$FUNCTION_NAME" \
-                --runtime "$RUNTIME" \
-                --role "$IAM_ROLE_ARN" \
-                --handler "$HANDLER" \
-                --code S3Bucket="$FUNCTIONS_S3_BUCKET",S3Key="$S3_KEY" \
-                --region "$REGION"
+              CURRENT_HASH=$(cat "$CODE_HASH_FILE")
+              LAST_HASH=$(cat "$LAST_HASH_PATH")
+
+              if [[ "$CURRENT_HASH" != "$LAST_HASH" ]]; then
+                echo "Hash changed — will deploy"
+                DEPLOY_CODE=true
+              else
+                echo "Code unchanged — skipping zip and version publish"
+              fi
             fi
 
-            # Wait for function update to finish
-            aws lambda wait function-updated \
-              --function-name "$FUNCTION_NAME" \
-              --region "$REGION"
+            if [[ ! -f "$LAST_CONFIG_HASH_FILE" ]]; then
+              echo "No previous config hash — will update config"
+              UPDATE_CONFIG=true
+            else
+              CURRENT_CONFIG_HASH=$(cat "$CONFIG_HASH_FILE")
+              LAST_CONFIG_HASH=$(cat "$LAST_CONFIG_HASH_FILE")
+              if [[ "$CURRENT_CONFIG_HASH" != "$LAST_CONFIG_HASH" ]]; then
+                echo "Config hash changed — will update config"
+                UPDATE_CONFIG=true
+              else
+                echo "Config unchanged — skipping config update"
+              fi
+            fi
 
-            if [[ -n $LAYERS ]]; then
-              echo "Updating layers for ${FUNCTION_NAME}..."
-              aws lambda update-function-configuration \
-              --function-name "$FUNCTION_NAME" \
-              --layers $LAYERS
+            if [[ "$DEPLOY_CODE" == true ]]; then
+              ZIP_FILE="${FUNCTION_NAME}-${TIMESTAMP}-${COMMIT_SHA}.zip"
+              S3_KEY="${APP}/${LAMBDA}/${ZIP_FILE}"
+
+              echo "Zipping $path to $ZIP_FILE"
+              cd "$path"
+              zip -r "../../../$ZIP_FILE" . > /dev/null
+              cd - > /dev/null
+
+              echo "Uploading to s3://${FUNCTIONS_S3_BUCKET}/${S3_KEY}"
+              aws s3 cp "$ZIP_FILE" "s3://${FUNCTIONS_S3_BUCKET}/${S3_KEY}"
+
+              echo "Checking if Lambda function ${FUNCTION_NAME} exists..."
+              if aws lambda get-function --function-name "$FUNCTION_NAME" --region "$REGION" >/dev/null 2>&1; then
+                echo "Updating Lambda ${FUNCTION_NAME}..."
+                aws lambda update-function-code \
+                  --function-name "$FUNCTION_NAME" \
+                  --s3-bucket "$FUNCTIONS_S3_BUCKET" \
+                  --s3-key "$S3_KEY" \
+                  --region "$REGION"
+              else
+                echo "Creating Lambda ${FUNCTION_NAME}..."
+                aws lambda create-function \
+                  --function-name "$FUNCTION_NAME" \
+                  --runtime "$RUNTIME" \
+                  --role "$IAM_ROLE_ARN" \
+                  --handler "$HANDLER" \
+                  --code S3Bucket="$FUNCTIONS_S3_BUCKET",S3Key="$S3_KEY" \
+                  --region "$REGION"
+              fi
 
               # Wait for function update to finish
               aws lambda wait function-updated \
                 --function-name "$FUNCTION_NAME" \
                 --region "$REGION"
+
+              echo "Publishing new version for ${FUNCTION_NAME}..."
+              VERSION=$(aws lambda publish-version \
+                --function-name "$FUNCTION_NAME" \
+                --region "$REGION" \
+                --output text \
+                --query 'Version')
+
+              echo "Published version $VERSION"
+
+              echo "Updating or creating alias '$DEPLOY_ALIAS'..."
+              aws lambda update-alias \
+                --function-name "$FUNCTION_NAME" \
+                --name "$DEPLOY_ALIAS" \
+                --function-version "$VERSION" \
+                --region "$REGION" || \
+              aws lambda create-alias \
+                --function-name "$FUNCTION_NAME" \
+                --name "$DEPLOY_ALIAS" \
+                --function-version "$VERSION" \
+                --region "$REGION"
+
+              echo "Cleaning up..."
+              rm "$ZIP_FILE"
             fi
+            
+            if [[ "$UPDATE_CONFIG" == true ]]; then
+              echo "Updating configuration for ${FUNCTION_NAME}..."
+              aws lambda update-function-configuration \
+                --function-name "$FUNCTION_NAME" \
+                --runtime "$RUNTIME" \
+                --handler "$HANDLER" \
+                --role "$IAM_ROLE_ARN" \
+                --layers $LAYERS \
+                --region "$REGION"
 
-            echo "Publishing new version for ${FUNCTION_NAME}..."
-            VERSION=$(aws lambda publish-version \
-              --function-name "$FUNCTION_NAME" \
-              --region "$REGION" \
-              --output text \
-              --query 'Version')
-
-            echo "Published version $VERSION"
-
-            echo "Updating or creating alias '$DEPLOY_ALIAS'..."
-            aws lambda update-alias \
-              --function-name "$FUNCTION_NAME" \
-              --name "$DEPLOY_ALIAS" \
-              --function-version "$VERSION" \
-              --region "$REGION" || \
-            aws lambda create-alias \
-              --function-name "$FUNCTION_NAME" \
-              --name "$DEPLOY_ALIAS" \
-              --function-version "$VERSION" \
-              --region "$REGION"
-
-            echo "Cleaning up..."
-            rm "$ZIP_FILE"
-
+              aws lambda wait function-updated \
+                --function-name "$FUNCTION_NAME" \
+                --region "$REGION"
+            fi
           done <<< "${{ steps.function_dirs.outputs.dirs }}"
+
+      - name: Upload updated hash files to S3
+        run: |
+          BRANCH="${{ github.ref_name }}"
+          find functions -type f \( -name ".code.hash" -o -name ".config.hash" \) | while read file; do
+            APP=$(basename "$(dirname "$(dirname "$file")")")
+            FUNC=$(basename "$(dirname "$file")")
+            NAME=$(basename "$file")
+            aws s3 cp "$file" "s3://${HASHES_S3_BUCKET}/$BRANCH/$APP-$FUNC$NAME"
+          done
