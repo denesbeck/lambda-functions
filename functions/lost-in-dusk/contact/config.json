@@ -1,5 +1,5 @@
 {
   "runtime": "nodejs22.x",
   "handler": "index.handler",
-  "role": "arn:aws:iam::874820004530:role/service-role/contact-role-72jxehp2"
+  "role": "arn:aws:iam::874820004530:role/lost-in-dusk-contact-lambda"
 }
