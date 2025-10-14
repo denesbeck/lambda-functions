@@ -1,8 +1,8 @@
 import axios from "axios";
-import nodemailer from "nodemailer";
 import querystring from "querystring";
 import validator from "validator";
 import { SSMClient, GetParametersCommand } from "@aws-sdk/client-ssm";
+import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 
 // Fetch secrets from AWS SSM
 const fetchSecrets = async () => {
@@ -10,10 +10,8 @@ const fetchSecrets = async () => {
   const input = {
     Names: [
       "/lostindusk.com/contact/CF/SECRET_KEY",
-      "/lostindusk.com/contact/ses/HOST",
-      "/lostindusk.com/contact/ses/PASSWORD",
       "/lostindusk.com/contact/ses/TARGET",
-      "/lostindusk.com/contact/ses/USERNAME",
+      "/lostindusk.com/contact/ses/SOURCE",
     ],
     WithDecryption: true,
   };
@@ -54,29 +52,34 @@ const validateCFTurnstile = async (token, secretKey) => {
   }
 };
 
-// Email sending
+// Send email using AWS SES
 const sendEmail = async (params, name, email, message) => {
-  const transporter = nodemailer.createTransport({
-    host: params.HOST,
-    port: 465,
-    secure: true,
-    auth: {
-      user: params.USERNAME,
-      pass: params.PASSWORD,
+  const client = new SESClient({ region: "eu-central-1" });
+
+  const command = new SendEmailCommand({
+    Destination: {
+      ToAddresses: [params.TARGET],
     },
+    Message: {
+      Body: {
+        Text: {
+          Data: `You received a message from ${name} (${email})!\n\n${message}`,
+        },
+      },
+      Subject: {
+        Data: `Message from ${name} <${email}>`,
+      },
+    },
+    Source: params.SOURCE,
+    ReplyToAddresses: [email],
   });
 
   try {
-    const result = await transporter.sendMail({
-      from: '"LostInDusk.com" <contact@lostindusk.com>',
-      to: params.TARGET,
-      subject: `Message from ${name} <${email}>`,
-      text: `You received a message from ${name} (${email})!\n\n${message}`,
-    });
-    console.log("Email sent:", result.messageId);
+    const response = await client.send(command);
+    console.log("Email sent with SES:", response.MessageId);
     return true;
   } catch (err) {
-    console.error("Email sending failed:", err);
+    console.error("SES email sending failed:", err);
     return false;
   }
 };

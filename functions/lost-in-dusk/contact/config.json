@@ -4,7 +4,6 @@
   "role": "arn:aws:iam::874820004530:role/lost-in-dusk-contact-lambda",
   "layers": [
     "arn:aws:lambda:eu-central-1:874820004530:layer:Axios:14",
-    "arn:aws:lambda:eu-central-1:874820004530:layer:Nodemailer:13",
     "arn:aws:lambda:eu-central-1:874820004530:layer:Validator:12"
   ]
 }
