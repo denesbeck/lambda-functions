@@ -1,4 +1,4 @@
-name: Deploy Lambdas
+name: Deploy Lambda Functions
 
 on:
   push:
