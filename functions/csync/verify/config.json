@@ -1,7 +1,0 @@
-{
-  "function_name": "CSyncVerify",
-  "runtime": "nodejs22.x",
-  "handler": "index.handler",
-  "role": "arn:aws:iam::874820004530:role/CSyncVerifyLambdaRole",
-  "layers": []
-}
