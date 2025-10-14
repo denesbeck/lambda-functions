@@ -65,28 +65,7 @@ jobs:
           COMMIT_SHA=${{ github.sha }}
           BRANCH="${{ github.ref_name }}"
 
-          # Determine alias from branch name
-          get_alias() {
-            case "$1" in
-              main)
-                echo "prod"
-                ;;
-              test/*)
-                echo "test"
-                ;;
-              release/*)
-                echo "staging"
-                ;;
-              feature/*)
-                echo "dev"
-                ;;
-              *)
-                echo "dev"
-                ;;
-            esac
-          }
-
-          DEPLOY_ALIAS=$(get_alias "$BRANCH")
+          DEPLOY_ALIAS=$(./scripts/get-alias.sh "$BRANCH")
           echo "Branch '$BRANCH' will deploy to alias: $DEPLOY_ALIAS"
 
           while IFS= read -r path; do

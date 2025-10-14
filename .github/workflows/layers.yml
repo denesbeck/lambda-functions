@@ -63,45 +63,7 @@ jobs:
           COMMIT_SHA=${{ github.sha }}
           BRANCH="${{ github.ref_name }}"
 
-          # Determine alias from branch name
-          get_alias() {
-            case "$1" in
-              main)
-                echo "prod"
-                ;;
-              test/*)
-                echo "test"
-                ;;
-              release/*)
-                echo "staging"
-                ;;
-              feature/*)
-                echo "dev"
-                ;;
-              *)
-                echo "dev"
-                ;;
-            esac
-          }
-
-          install_packages(){
-            case "$1" in
-              node)
-                npm install
-              ;;
-              golang)
-                go mod tidy
-              ;;
-              ruby)
-                bundle install
-              ;;
-              pip)
-                pip install -r requirements.txt
-              ;;
-            esac
-          }
-
-          DEPLOY_ALIAS=$(get_alias "$BRANCH")
+          DEPLOY_ALIAS=$(./scripts/get-alias.sh "$BRANCH")
           echo "Branch '$BRANCH' will deploy to alias: $DEPLOY_ALIAS"
 
           while IFS= read -r path; do
@@ -123,7 +85,7 @@ jobs:
 
             echo "Zipping $path..."
             cd "$path"
-            install_packages "$TYPE"
+            ./scripts/install-packages.sh "$TYPE"
 
             zip -r "../../$ZIP_FILE" . > /dev/null
             cd - > /dev/null
