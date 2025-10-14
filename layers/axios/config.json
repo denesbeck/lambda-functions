@@ -1,0 +1,10 @@
+{
+  "name": "Axios",
+  "description": "Axios layer for Node.js functions.",
+  "type": "node",
+  "runtimes": [
+    "nodejs18.x",
+    "nodejs20.x",
+    "nodejs22.x"
+  ]
+}
