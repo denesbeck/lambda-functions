@@ -15,6 +15,9 @@ jobs:
     strategy:
       matrix:
         region: [us-east-1, eu-central-1]
+
+    environment: ${{ matrix.region }}
+
     env:
       FUNCTIONS_S3_BUCKET: ${{ vars.FUNCTIONS_S3_BUCKET }}
       LAYERS_S3_BUCKET: ${{ vars.LAYERS_S3_BUCKET }}
@@ -45,8 +48,8 @@ jobs:
             FUNC=$(basename "$func_dir")
             TARGET=".hash-cache/functions/$APP/$FUNC"
             mkdir -p "$TARGET"
-            aws s3 cp "s3://${HASHES_S3_BUCKET}/functions/$BRANCH/$APP-$FUNC.code.hash" "$TARGET/.code.hash" || true
-            aws s3 cp "s3://${HASHES_S3_BUCKET}/functions/$BRANCH/$APP-$FUNC.config.hash" "$TARGET/.config.hash" || true
+            aws s3 cp --region "$REGION" "s3://${HASHES_S3_BUCKET}/functions/$BRANCH/$APP-$FUNC.code.hash" "$TARGET/.code.hash" || true
+            aws s3 cp --region "$REGION" "s3://${HASHES_S3_BUCKET}/functions/$BRANCH/$APP-$FUNC.config.hash" "$TARGET/.config.hash" || true
           done
 
       - name: Get layer directories
@@ -112,7 +115,7 @@ jobs:
             cd - > /dev/null
 
             echo "Uploading to s3://${LAYERS_S3_BUCKET}/${S3_KEY}"
-            aws s3 cp "$ZIP_FILE" "s3://${LAYERS_S3_BUCKET}/${S3_KEY}"
+            aws s3 cp --region "$REGION" "$ZIP_FILE" "s3://${LAYERS_S3_BUCKET}/${S3_KEY}"
 
             echo "Publishing new layer version..."
             ACCOUNT_NUMBER=$(aws sts get-caller-identity --query Account --output text)
@@ -237,7 +240,7 @@ jobs:
               cd - > /dev/null
 
               echo "Uploading to s3://${FUNCTIONS_S3_BUCKET}/${S3_KEY}"
-              aws s3 cp "$ZIP_FILE" "s3://${FUNCTIONS_S3_BUCKET}/${S3_KEY}"
+              aws s3 cp --region "$REGION" "$ZIP_FILE" "s3://${FUNCTIONS_S3_BUCKET}/${S3_KEY}"
 
               echo "Checking if Lambda function ${FUNCTION_NAME} exists..."
               if aws lambda get-function --function-name "$FUNCTION_NAME" --region "$REGION" >/dev/null 2>&1; then
