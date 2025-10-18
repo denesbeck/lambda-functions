@@ -12,7 +12,9 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
+    strategy:
+      matrix:
+        region: [us-east-1, eu-central-1]
     env:
       FUNCTIONS_S3_BUCKET: ${{ vars.FUNCTIONS_S3_BUCKET }}
       LAYERS_S3_BUCKET: ${{ vars.LAYERS_S3_BUCKET }}
