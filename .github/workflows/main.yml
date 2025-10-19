@@ -55,21 +55,12 @@ jobs:
       - name: Get layer directories
         id: layer_dirs
         run: |
-          echo "Detecting changed layer directories..."
-          BEFORE=${{ github.event.before }}
-          AFTER=${{ github.event.after }}
-          DIRS=""
+          echo "Get layer directories..."
 
-          if git cat-file -e "$BEFORE"^{commit} &>/dev/null; then
-            echo "Commit $BEFORE found."
-            DIRS=$(git diff --name-only "$BEFORE" "$AFTER" | awk -F/ '$1 == "layers" && NF>=2 && $1 !~ /^\./ && $2 !~ /^\./ {print $1 "/" $2}' | sort -u)
-          else
-            echo "Commit $BEFORE NOT found. First commit."
-            DIRS=$(find . -mindepth 2 -maxdepth 2 -type d -not -path '*/.*' | cut -c 3- | sort -u | awk -F/ '$1 == "layers"')
-          fi
+          DIRS=$(find . -mindepth 2 -maxdepth 2 -type d -not -path '*/.*' | cut -c 3- | sort -u | awk -F/ '$1 == "layers"')
 
           if [[ -z "$DIRS" ]]; then
-            echo "No changed layer directories found. Skipping deployment."
+            echo "No layer directories found. Skipping deployment."
           else
             echo "Changed layer directories:"
             echo "$DIRS"
@@ -138,21 +129,12 @@ jobs:
       - name: Get Lambda directories
         id: function_dirs
         run: |
-          echo "Detecting changed Lambda directories..."
-          BEFORE=${{ github.event.before }}
-          AFTER=${{ github.event.after }}
-          DIRS=""
+          echo "Get Lambda directories..."
 
-          if git cat-file -e "$BEFORE"^{commit} &>/dev/null; then
-            echo "Commit $BEFORE found."
-            DIRS=$(git diff --name-only "$BEFORE" "$AFTER" | awk -F/ '$1 == "functions" && NF>=3 && $1 !~ /^\./ && $2 !~ /^\./ && $3 !~ /^\./ {print $1 "/" $2 "/" $3}' | sort -u)
-          else
-            echo "Commit $BEFORE NOT found. First commit."
-            DIRS=$(find . -mindepth 3 -maxdepth 3 -type d -not -path '*/.*' | cut -c 3- | sort -u | awk -F/ '$1 == "functions"')
-          fi
+          DIRS=$(find . -mindepth 3 -maxdepth 3 -type d -not -path '*/.*' | cut -c 3- | sort -u | awk -F/ '$1 == "functions"')
 
           if [[ -z "$DIRS" ]]; then
-            echo "No changed Lambda directories found. Skipping deployment."
+            echo "No Lambda directories found. Skipping deployment."
           else
             echo "Changed Lambda directories:"
             echo "$DIRS"
