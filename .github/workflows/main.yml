@@ -177,19 +177,7 @@ jobs:
               continue
             fi
 
-            FUNCTION_NAME=$(jq -r .function_name "$CONFIG_FILE")
-            RUNTIME=$(jq -r .runtime "$CONFIG_FILE")
-            HANDLER=$(jq -r .handler "$CONFIG_FILE")
-            ROLE_NAME=$(jq -r .role "$CONFIG_FILE")
-            IAM_ROLE_ARN="arn:aws:iam::${ACCOUNT_NUMBER}:role/${ROLE_NAME}"
-            LAYER_STRINGS=$(jq -r '.layers[]' "$CONFIG_FILE")
-            LAYER_ARNS=""
-            for LAYER in $LAYER_STRINGS; do
-              LAYER_NAME=$(echo "$LAYER" | cut -d':' -f1)
-              LAYER_VERSION=$(echo "$LAYER" | cut -d':' -f2)
-              LAYER_ARNS+="arn:aws:lambda:${REGION}:${ACCOUNT_NUMBER}:layer:${LAYER_NAME}:${LAYER_VERSION} "
-            done
-            LAYERS="${LAYER_ARNS%% }"
+            source ./scripts/expand-config.sh "$CONFIG_FILE"
 
             CODE_HASH_FILE="$path/.code.hash"
             CONFIG_HASH_FILE="$path/.config.hash"            

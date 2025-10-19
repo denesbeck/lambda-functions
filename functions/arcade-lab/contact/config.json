@@ -3,5 +3,10 @@
   "runtime": "nodejs22.x",
   "handler": "index.handler",
   "role": "ArcadeLabContactRole",
-  "layers": ["Axios:18", "Validator:16"]
+  "layers": [
+    {
+      "eu-central-1": ["Axios:18", "Validator:16"],
+      "us-east-1": ["Axios:3", "Validator:3"]
+    }
+  ]
 }
