@@ -40,12 +40,6 @@ jobs:
           role-to-assume: arn:aws:iam::874820004530:role/GitHubActionsDeployRole
           aws-region: ${{ matrix.region }}
 
-      - name: Get AWS account ID
-        id: get-account
-        run: |
-          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-          echo "account-id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
-
       - name: Download previous hash files from S3
         run: |
           mkdir -p .hash-cache
