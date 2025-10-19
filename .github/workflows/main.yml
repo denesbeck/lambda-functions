@@ -22,7 +22,7 @@ jobs:
       FUNCTIONS_S3_BUCKET: ${{ vars.FUNCTIONS_S3_BUCKET }}
       LAYERS_S3_BUCKET: ${{ vars.LAYERS_S3_BUCKET }}
       HASHES_S3_BUCKET: ${{ vars.HASHES_S3_BUCKET }}
-      REGION: ${{ vars.REGION }}
+      REGION: ${{ matrix.region }}
       ACCOUNT_NUMBER: ${{ secrets.ACCOUNT_NUMBER }}
 
     steps:
@@ -38,7 +38,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: arn:aws:iam::874820004530:role/GitHubActionsDeployRole
-          aws-region: ${{ vars.REGION }}
+          aws-region: ${{ matrix.region }}
 
       - name: Get AWS account ID
         id: get-account
