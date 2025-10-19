@@ -23,6 +23,7 @@ jobs:
       LAYERS_S3_BUCKET: ${{ vars.LAYERS_S3_BUCKET }}
       HASHES_S3_BUCKET: ${{ vars.HASHES_S3_BUCKET }}
       REGION: ${{ vars.REGION }}
+      ACCOUNT_NUMBER: ${{ secrets.ACCOUNT_NUMBER }}
 
     steps:
       - name: Checkout code
@@ -38,6 +39,12 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::874820004530:role/GitHubActionsDeployRole
           aws-region: ${{ vars.REGION }}
+
+      - name: Get AWS account ID
+        id: get-account
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          echo "account-id=$ACCOUNT_ID" >> "$GITHUB_OUTPUT"
 
       - name: Download previous hash files from S3
         run: |
@@ -62,7 +69,7 @@ jobs:
           if [[ -z "$DIRS" ]]; then
             echo "No layer directories found. Skipping deployment."
           else
-            echo "Changed layer directories:"
+            echo "Layer directories:"
             echo "$DIRS"
             echo "dirs<<EOF" >> $GITHUB_OUTPUT
             echo "$DIRS" >> $GITHUB_OUTPUT
@@ -136,7 +143,7 @@ jobs:
           if [[ -z "$DIRS" ]]; then
             echo "No Lambda directories found. Skipping deployment."
           else
-            echo "Changed Lambda directories:"
+            echo "Lambda directories:"
             echo "$DIRS"
             echo "dirs<<EOF" >> $GITHUB_OUTPUT
             echo "$DIRS" >> $GITHUB_OUTPUT
@@ -173,8 +180,16 @@ jobs:
             FUNCTION_NAME=$(jq -r .function_name "$CONFIG_FILE")
             RUNTIME=$(jq -r .runtime "$CONFIG_FILE")
             HANDLER=$(jq -r .handler "$CONFIG_FILE")
-            IAM_ROLE_ARN=$(jq -r .role "$CONFIG_FILE")
-            LAYERS=$(jq -r '.layers | join(" ")' "$CONFIG_FILE")
+            ROLE_NAME=$(jq -r .role "$CONFIG_FILE")
+            IAM_ROLE_ARN="arn:aws:iam::${ACCOUNT_NUMBER}:role/${ROLE_NAME}"
+            LAYER_STRINGS=$(jq -r '.layers[]' "$CONFIG_FILE")
+            LAYER_ARNS=""
+            for LAYER in $LAYER_STRINGS; do
+              LAYER_NAME=$(echo "$LAYER" | cut -d':' -f1)
+              LAYER_VERSION=$(echo "$LAYER" | cut -d':' -f2)
+              LAYER_ARNS+="arn:aws:lambda:${REGION}:${ACCOUNT_NUMBER}:layer:${LAYER_NAME}:${LAYER_VERSION} "
+            done
+            LAYERS="${LAYER_ARNS%% }"
 
             CODE_HASH_FILE="$path/.code.hash"
             CONFIG_HASH_FILE="$path/.config.hash"            

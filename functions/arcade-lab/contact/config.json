@@ -2,9 +2,6 @@
   "function_name": "ArcadeLabContact",
   "runtime": "nodejs22.x",
   "handler": "index.handler",
-  "role": "arn:aws:iam::874820004530:role/ArcadeLabContactRole",
-  "layers": [
-    "arn:aws:lambda:eu-central-1:874820004530:layer:Axios:18",
-    "arn:aws:lambda:eu-central-1:874820004530:layer:Validator:16"
-  ]
+  "role": "ArcadeLabContactRole",
+  "layers": ["Axios:18", "Validator:16"]
 }
