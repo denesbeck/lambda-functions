@@ -87,5 +87,5 @@ Authentication is handled via GitHub OIDC, and access control is managed through
 
 ## Lambda Requirements 🛠️
 
-- Ensure each Lambda function and layer has a valid config.json
+- Ensure each Lambda function and layer has a valid `config.json`
 - IAM role must allow Lambda execution and access to CloudWatch Logs
