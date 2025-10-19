@@ -33,10 +33,16 @@ layers/
 
 ```json
 {
+  "function_name": "MyFunction",
   "runtime": "nodejs18.x",
   "handler": "index.handler",
-  "role": "arn:aws:iam::123456789012:role/my-lambda-execution-role",
-  "layers": ["arn:aws:lambda:eu-central-1:123456789012:layer:MyLayer:1"]
+  "role": "MyLambdaExecutionRole",
+  "layers": [
+    {
+      "eu-central-1": ["MyLayer:1", "MyLayer:2"],
+      "us-east-1": ["MyLayer:3", "MyLayer:4"]
+    }
+  ]
 }
 ```
 
@@ -67,6 +73,17 @@ These are uploaded to S3 under:
 
 **Layers:**
 `s3://<bucket>/<layer>`
+
+## Reguired variables 🔧
+
+- `FUNCTIONS_S3_BUCKET` (variable): S3 bucket for Lambda functions
+- `LAYERS_S3_BUCKET` (variable): S3 bucket for Lambda layers
+- `HASHES_S3_BUCKET` (variable): S3 bucket for version/hash tracking
+- `ACCOUNT_NUMBER` (secret): Your AWS account number (keep it secret!)
+
+## Authentication & Authorization 🔐
+
+Authentication is handled via GitHub OIDC, and access control is managed through AWS IAM roles.
 
 ## Lambda Requirements 🛠️
 
