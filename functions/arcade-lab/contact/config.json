@@ -5,8 +5,8 @@
   "role": "ArcadeLabContactRole",
   "layers": [
     {
-      "eu-central-1": ["Axios:18", "Validator:16"],
-      "us-east-1": ["Axios:3", "Validator:3"]
+      "eu-central-1": ["Axios:23", "Validator:21"],
+      "us-east-1": ["Axios:5", "Validator:5"]
     }
   ]
 }
