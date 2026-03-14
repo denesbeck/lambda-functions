@@ -11,8 +11,8 @@ find "$FUNCTIONS_ROOT" -mindepth 2 -maxdepth 2 -type d -not -path '*/.*' | sort 
   echo ""
   echo "Processing: $func_dir"
 
-  # ----- Generate code hash (excluding config.json) -----
-  CODE_HASH=$(find "$func_dir" -type f ! -name "config.json" -exec sha256sum {} + | sort | sha256sum | awk '{print $1}')
+  # ----- Generate code hash (excluding config.json and hash files) -----
+  CODE_HASH=$(find "$func_dir" -type f ! -name "config.json" ! -name ".code.hash" ! -name ".config.hash" -exec sha256sum {} + | sort | sha256sum | awk '{print $1}')
 
   # ----- Generate config hash (only config.json) -----
   CONFIG_FILE="$func_dir/config.json"
