@@ -1,6 +1,7 @@
 # Ignore node modules, Python cache, Go binaries
 **/node_modules/
 **/__pycache__/
+.pytest_cache/
 **/*.pyc
 **/*.pyo
 **/*.pyd
