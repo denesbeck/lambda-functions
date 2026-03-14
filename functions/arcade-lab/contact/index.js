@@ -6,7 +6,7 @@ import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 
 // Fetch secrets from AWS SSM
 const fetchSecrets = async () => {
-  const client = new SSMClient({ region: "eu-central-1" });
+  const client = new SSMClient({ region: process.env.AWS_REGION });
   const input = {
     Names: [
       "/arcade-lab.io/contact/CF/SECRET_KEY",
@@ -54,7 +54,7 @@ const validateCFTurnstile = async (token, secretKey) => {
 
 // Send email using AWS SES
 const sendEmail = async (params, name, email, message) => {
-  const client = new SESClient({ region: "eu-central-1" });
+  const client = new SESClient({ region: process.env.AWS_REGION });
 
   const command = new SendEmailCommand({
     Destination: {
