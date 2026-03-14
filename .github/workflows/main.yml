@@ -103,7 +103,7 @@ jobs:
             LAYER_NAME=$(jq -r .name "$CONFIG_FILE")
             DESCRIPTION=$(jq -r .description "$CONFIG_FILE")
             TYPE=$(jq -r .type "$CONFIG_FILE")
-            COMPATIBLE_RUNTIMES=$(jq -c .runtimes "$CONFIG_FILE")
+            COMPATIBLE_RUNTIMES=$(jq -r '.runtimes | join(" ")' "$CONFIG_FILE")
 
             ZIP_FILE="${LAYER}-${TIMESTAMP}-${COMMIT_SHA}.zip"
             S3_KEY="${LAYER}/${ZIP_FILE}"
@@ -124,7 +124,7 @@ jobs:
               --layer-name "arn:aws:lambda:$REGION:$ACCOUNT_NUMBER:layer:$LAYER_NAME" \
               --description "$DESCRIPTION" \
               --content S3Bucket="$LAYERS_S3_BUCKET",S3Key="$S3_KEY" \
-              --compatible-runtimes "$COMPATIBLE_RUNTIMES" \
+              --compatible-runtimes $COMPATIBLE_RUNTIMES \
               --region "$REGION" \
               --output text \
               --query 'Version')
