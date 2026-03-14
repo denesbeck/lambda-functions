@@ -14,7 +14,45 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run ShellCheck
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: scripts
+          severity: warning
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Node.js dependencies
+        run: npm ci
+
+      - name: Run Node.js tests
+        run: npm test
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install Python dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run Python tests
+        run: python -m pytest tests/lambda-layer-cleanup/ -v
+
   deploy-layers:
+    needs: validate
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -126,7 +164,7 @@ jobs:
           done <<< "${{ steps.layer_dirs.outputs.dirs }}"
 
   deploy-functions:
-    needs: deploy-layers
+    needs: [validate, deploy-layers]
     runs-on: ubuntu-latest
     strategy:
       matrix:
