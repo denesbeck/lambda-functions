@@ -1,8 +1,20 @@
 import boto3
+import json
 import logging
+import time
 
 # Initialize the Lambda client
 lambda_client = boto3.client('lambda')
+
+# Configure structured JSON logging
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+
+
+def log(level, message, **extra):
+    """Output a structured JSON log entry."""
+    entry = {"timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "level": level, "message": message, **extra}
+    print(json.dumps(entry))
 
 
 def get_all_layers():
@@ -32,34 +44,36 @@ def get_all_layer_versions(layer_name):
 def cleanup_lambda_layer_versions(event, context):
     try:
         layers = get_all_layers()
+        log("info", "Found layers to process", layer_count=len(layers))
 
-        # Loop through each layer in the account
+        total_deleted = 0
+
         for layer in layers:
             layer_name = layer['LayerName']
-            print(f"Processing layer: {layer_name}")
 
-            # List all versions of the current layer
             layer_versions = get_all_layer_versions(layer_name)
-
-            # Sort the versions by the version number (in descending order)
             layer_versions.sort(key=lambda x: x['Version'], reverse=True)
 
-            # Only keep the latest 10 versions
             versions_to_delete = layer_versions[10:]
 
             if versions_to_delete:
                 for version in versions_to_delete:
                     version_number = version['Version']
-                    print(f"Deleting layer {layer_name} version: {version_number}")
-
-                    # Delete the older layer version
                     lambda_client.delete_layer_version(
                         LayerName=layer_name,
                         VersionNumber=version_number
                     )
+                    total_deleted += 1
+
+                log("info", "Deleted old layer versions", layer=layer_name,
+                    deleted_count=len(versions_to_delete),
+                    kept_count=min(len(layer_versions), 10))
             else:
-                print(f"No versions to delete for layer {layer_name}, keeping the latest 10.")
+                log("info", "No versions to delete", layer=layer_name,
+                    version_count=len(layer_versions))
+
+        log("info", "Cleanup complete", total_layers=len(layers), total_deleted=total_deleted)
 
     except Exception as e:
-        logging.error(f"Error cleaning up Lambda layers: {str(e)}")
+        log("error", "Error cleaning up Lambda layers", error=str(e))
         raise e
