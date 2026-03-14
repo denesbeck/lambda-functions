@@ -9,8 +9,12 @@ permissions:
   id-token: write
   contents: read
 
+concurrency:
+  group: deploy-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
-  deploy:
+  deploy-layers:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -19,9 +23,7 @@ jobs:
     environment: ${{ matrix.region }}
 
     env:
-      FUNCTIONS_S3_BUCKET: ${{ vars.FUNCTIONS_S3_BUCKET }}
       LAYERS_S3_BUCKET: ${{ vars.LAYERS_S3_BUCKET }}
-      HASHES_S3_BUCKET: ${{ vars.HASHES_S3_BUCKET }}
       REGION: ${{ matrix.region }}
       ACCOUNT_NUMBER: ${{ secrets.ACCOUNT_NUMBER }}
 
@@ -31,29 +33,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
-
       - name: Set up AWS credentials
         uses: aws-actions/configure-aws-credentials@v5
         with:
-          role-to-assume: arn:aws:iam::874820004530:role/GitHubActionsDeployRole
+          role-to-assume: arn:aws:iam::${{ secrets.ACCOUNT_NUMBER }}:role/GitHubActionsDeployRole
           aws-region: ${{ matrix.region }}
 
-      - name: Download previous hash files from S3
-        run: |
-          mkdir -p .hash-cache
-          BRANCH="${{ github.ref_name }}"
-          find functions -mindepth 2 -maxdepth 2 -type d | while read func_dir; do
-            APP=$(basename "$(dirname "$func_dir")")
-            FUNC=$(basename "$func_dir")
-            TARGET=".hash-cache/functions/$APP/$FUNC"
-            mkdir -p "$TARGET"
-            aws s3 cp --region "$REGION" "s3://${HASHES_S3_BUCKET}/functions/$BRANCH/$APP-$FUNC.code.hash" "$TARGET/.code.hash" || true
-            aws s3 cp --region "$REGION" "s3://${HASHES_S3_BUCKET}/functions/$BRANCH/$APP-$FUNC.config.hash" "$TARGET/.config.hash" || true
-          done
-
-      - name: Get layer directories
+      - name: Get changed layer directories
         id: layer_dirs
         run: |
           echo "Detecting changed layer directories..."
@@ -74,9 +60,9 @@ jobs:
           else
             echo "Changed layer directories:"
             echo "$DIRS"
-            echo "dirs<<EOF" >> $GITHUB_OUTPUT
-            echo "$DIRS" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            echo "dirs<<EOF" >> "$GITHUB_OUTPUT"
+            echo "$DIRS" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Package and deploy layers
@@ -96,7 +82,7 @@ jobs:
 
             CONFIG_FILE="${path}/config.json"
             if [[ ! -f "$CONFIG_FILE" ]]; then
-              echo "Missing config.json in $path, skipping..."
+              echo "WARNING: Missing config.json in $path, skipping..." >&2
               continue
             fi
 
@@ -108,10 +94,13 @@ jobs:
             ZIP_FILE="${LAYER}-${TIMESTAMP}-${COMMIT_SHA}.zip"
             S3_KEY="${LAYER}/${ZIP_FILE}"
 
-            echo "Zipping $path..."
+            echo "::group::Deploy layer: $LAYER_NAME"
+
+            echo "Installing packages for $path..."
             cd "$path"
             ../../scripts/install-packages.sh "$TYPE"
 
+            echo "Zipping $path..."
             zip -r "../../$ZIP_FILE" . > /dev/null
             cd - > /dev/null
 
@@ -131,15 +120,55 @@ jobs:
 
             echo "Published version $VERSION of $LAYER_NAME"
 
-            echo "Cleaning up..."
             rm "$ZIP_FILE"
+            echo "::endgroup::"
 
           done <<< "${{ steps.layer_dirs.outputs.dirs }}"
+
+  deploy-functions:
+    needs: deploy-layers
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        region: [us-east-1, eu-central-1]
+
+    environment: ${{ matrix.region }}
+
+    env:
+      FUNCTIONS_S3_BUCKET: ${{ vars.FUNCTIONS_S3_BUCKET }}
+      HASHES_S3_BUCKET: ${{ vars.HASHES_S3_BUCKET }}
+      REGION: ${{ matrix.region }}
+      ACCOUNT_NUMBER: ${{ secrets.ACCOUNT_NUMBER }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.ACCOUNT_NUMBER }}:role/GitHubActionsDeployRole
+          aws-region: ${{ matrix.region }}
+
+      - name: Download previous hash files from S3
+        run: |
+          mkdir -p .hash-cache
+          BRANCH="${{ github.ref_name }}"
+          find functions -mindepth 2 -maxdepth 2 -type d | while read -r func_dir; do
+            APP=$(basename "$(dirname "$func_dir")")
+            FUNC=$(basename "$func_dir")
+            TARGET=".hash-cache/functions/$APP/$FUNC"
+            mkdir -p "$TARGET"
+            aws s3 cp --region "$REGION" "s3://${HASHES_S3_BUCKET}/functions/$BRANCH/$APP-$FUNC.code.hash" "$TARGET/.code.hash" || true
+            aws s3 cp --region "$REGION" "s3://${HASHES_S3_BUCKET}/functions/$BRANCH/$APP-$FUNC.config.hash" "$TARGET/.config.hash" || true
+          done
 
       - name: Get Lambda directories
         id: function_dirs
         run: |
-          echo "Get Lambda directories..."
+          echo "Detecting Lambda function directories..."
 
           DIRS=$(find . -mindepth 3 -maxdepth 3 -type d -not -path '*/.*' | cut -c 3- | sort -u | awk -F/ '$1 == "functions"')
 
@@ -148,15 +177,15 @@ jobs:
           else
             echo "Lambda directories:"
             echo "$DIRS"
-            echo "dirs<<EOF" >> $GITHUB_OUTPUT
-            echo "$DIRS" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            echo "dirs<<EOF" >> "$GITHUB_OUTPUT"
+            echo "$DIRS" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Generate code and config hashes
         run: bash ./scripts/generate-function-hashes.sh
 
-      - name: Zip, upload to S3, and deploy Lambda
+      - name: Deploy Lambda functions
         if: steps.function_dirs.outputs.dirs != ''
         run: |
           set -euo pipefail
@@ -169,21 +198,21 @@ jobs:
           echo "Branch '$BRANCH' will deploy to alias: $DEPLOY_ALIAS"
 
           while IFS= read -r path; do
-            echo "Processing $path..."
-
             APP=$(echo "$path" | cut -d'/' -f2)
             LAMBDA=$(echo "$path" | cut -d'/' -f3)
 
             CONFIG_FILE="${path}/config.json"
             if [[ ! -f "$CONFIG_FILE" ]]; then
-              echo "Missing config.json in $path, skipping..."
+              echo "WARNING: Missing config.json in $path, skipping..." >&2
               continue
             fi
+
+            echo "::group::Process $APP/$LAMBDA"
 
             source ./scripts/expand-config.sh "$CONFIG_FILE"
 
             CODE_HASH_FILE="$path/.code.hash"
-            CONFIG_HASH_FILE="$path/.config.hash"            
+            CONFIG_HASH_FILE="$path/.config.hash"
             LAST_HASH_PATH=".hash-cache/$path/.code.hash"
             LAST_CONFIG_HASH_FILE=".hash-cache/$path/.config.hash"
             DEPLOY_CODE=false
@@ -239,11 +268,12 @@ jobs:
                   --s3-key "$S3_KEY" \
                   --region "$REGION"
               else
-                echo "Missing Lambda function: ${FUNCTION_NAME}, skipping..."
+                echo "ERROR: Lambda function ${FUNCTION_NAME} does not exist, skipping..." >&2
+                rm "$ZIP_FILE"
+                echo "::endgroup::"
                 continue
               fi
 
-              # Wait for function update to finish
               aws lambda wait function-updated \
                 --function-name "$FUNCTION_NAME" \
                 --region "$REGION"
@@ -269,10 +299,9 @@ jobs:
                 --function-version "$VERSION" \
                 --region "$REGION"
 
-              echo "Cleaning up..."
               rm "$ZIP_FILE"
             fi
-            
+
             if [[ "$UPDATE_CONFIG" == true ]]; then
               echo "Updating configuration for ${FUNCTION_NAME}..."
               aws lambda update-function-configuration \
@@ -287,12 +316,14 @@ jobs:
                 --function-name "$FUNCTION_NAME" \
                 --region "$REGION"
             fi
+
+            echo "::endgroup::"
           done <<< "${{ steps.function_dirs.outputs.dirs }}"
 
       - name: Upload updated hash files to S3
         run: |
           BRANCH="${{ github.ref_name }}"
-          find functions -type f \( -name ".code.hash" -o -name ".config.hash" \) | while read file; do
+          find functions -type f \( -name ".code.hash" -o -name ".config.hash" \) | while read -r file; do
             APP=$(basename "$(dirname "$(dirname "$file")")")
             FUNC=$(basename "$(dirname "$file")")
             NAME=$(basename "$file")
