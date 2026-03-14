@@ -1,91 +1,156 @@
 # Lambda Function Store ⚡
 
-This repository uses a GitHub Actions workflow to automate the deployment of AWS Lambda functions.
+A GitHub Actions CI/CD pipeline for deploying AWS Lambda functions and layers across multiple regions. Uses SHA-256 hash-based change detection to skip unchanged functions, OIDC for keyless AWS authentication, and branch-based aliasing for environment isolation.
 
-## Features 💥
+## Features 🚀
 
-- Deploys all Lambda functions in `functions/<app-name>/<function-name>/`-style directories
-- Deploys all Lambda layers in `layers/<layer-name>/`-style directories
-- Automatically zips and uploads code to S3
-- Creates or updates Lambda functions using configuration from `config.json`
-- Attaches layers to Lambda functions using configuration from `config.json`
-- Publishes a new version after each successful deployment
-- Updates the appropriate alias based on the branch name
-- Skips unchanged functions by comparing commit diffs
+- **Multi-region deployments** via matrix strategy (`us-east-1`, `eu-central-1`)
+- **Hash-based change detection** -- only deploys functions whose code or config has changed (SHA-256 hashes persisted to S3)
+- **Independent code and config tracking** -- a config-only change updates configuration without redeploying code
+- **Branch-to-alias mapping** -- `main` -> `prod`, `release/*` -> `staging`, `test/*` -> `test`, `feature/*` -> `dev`
+- **Lambda versioning** -- every deploy publishes a new version and updates the alias
+- **Layer change detection** -- layers are only redeployed when their source files change (`git diff`)
+- **Multi-runtime support** -- Node.js, Python, Go, Ruby
+- **Validation gate** -- ShellCheck linting, Node.js tests (Vitest), and Python tests (pytest) must pass before deploy
+- **Concurrency control** -- prevents simultaneous deploys to the same branch
+- **OIDC authentication** -- keyless AWS access via GitHub Actions OIDC federation
+- **Structured JSON logging** -- all Lambda functions output JSON logs for CloudWatch Insights
+
+## Pipeline 🔄
+
+```
+push to any branch
+        |
+        v
+    validate
+    (ShellCheck + Node.js tests + Python tests)
+        |
+        v
+    deploy-layers  (matrix: us-east-1, eu-central-1)
+        |
+        v
+    deploy-functions  (matrix: us-east-1, eu-central-1)
+        |
+        v
+    upload hashes to S3
+```
 
 ## Directory Structure 📁
-
-Each Lambda function and layer should live in its own subdirectory and include a `config.json` file:
 
 ```
 functions/
   <app-name>/
     <function-name>/
-      index.js
+      index.js | lambda_function.py
       config.json
+      package.json (optional)
 layers/
   <layer-name>/
-    index.js
+    package.json | requirements.txt
     config.json
+scripts/
+  expand-config.sh          # Parses config.json into shell variables
+  generate-function-hashes.sh  # SHA-256 hashing for change detection
+  get-alias.sh              # Maps git branch to Lambda alias
+  install-packages.sh       # Multi-runtime package installer
+tests/
+  contact/                  # Unit tests for contact handler (Vitest)
+  lambda-layer-cleanup/     # Unit tests for cleanup function (pytest)
 ```
 
-### Example `config.json`:
+## Function `config.json` ⚙️
 
 ```json
 {
   "function_name": "MyFunction",
-  "runtime": "nodejs18.x",
+  "runtime": "nodejs22.x",
   "handler": "index.handler",
   "role": "MyLambdaExecutionRole",
   "layers": [
     {
-      "eu-central-1": ["MyLayer:1", "MyLayer:2"],
-      "us-east-1": ["MyLayer:3", "MyLayer:4"]
+      "eu-central-1": ["MyLayer:1"],
+      "us-east-1": ["MyLayer:2"]
     }
   ]
 }
 ```
 
-## Alias Strategy 👾
+| Field | Description |
+|-------|-------------|
+| `function_name` | AWS Lambda function name |
+| `runtime` | Lambda runtime (e.g. `nodejs22.x`, `python3.13`) |
+| `handler` | Entry point (e.g. `index.handler`) |
+| `role` | IAM role name (ARN is constructed automatically) |
+| `layers` | Region-specific layer versions in `LayerName:Version` format |
 
-The workflow chooses a Lambda alias based on the Git branch:
-| Branch Pattern | Alias |
-|---------------------|---------|
-| `main` | `prod` |
-| `release/*` | `staging` |
-| `test/*` | `test` |
-| `feature/*` or other| `dev` |
+## Layer `config.json` ⚙️
 
-## Deployment Artifacts 📦
+```json
+{
+  "name": "Axios",
+  "description": "Axios layer for Node.js functions.",
+  "type": "node",
+  "runtimes": ["nodejs18.x", "nodejs20.x", "nodejs22.x"]
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `name` | Lambda layer name |
+| `description` | Layer description |
+| `type` | Package type: `node`, `pip`, `golang`, `ruby` |
+| `runtimes` | Compatible Lambda runtimes |
+
+## Alias Strategy 👾 
+
+| Branch Pattern | Alias | Purpose |
+|---|---|---|
+| `main` | `prod` | Production |
+| `release/*` | `staging` | Pre-production |
+| `test/*` | `test` | Testing |
+| `feature/*` or other | `dev` | Development |
+
+## Deployment Artifacts 📦 
 
 Lambda packages are named with a timestamp and Git commit SHA:
 
-**Functions:**
-`<app>-<function>-<timestamp>-<sha>.zip`
+| Type | S3 Key Pattern |
+|------|---------------|
+| Functions | `s3://<bucket>/<app>/<function>/<app>-<function>-<timestamp>-<sha>.zip` |
+| Layers | `s3://<bucket>/<layer>/<layer>-<timestamp>-<sha>.zip` |
 
-**Layers:**
-`<layer-name>-<timestamp>-<sha>.zip`
+## Required Variables 🔧
 
-These are uploaded to S3 under:
+These are configured as GitHub Actions environment variables/secrets per region:
 
-**Functions:**
-`s3://<bucket>/<app>/<function>/`
+| Name | Type | Description |
+|------|------|-------------|
+| `FUNCTIONS_S3_BUCKET` | variable | S3 bucket for Lambda function artifacts |
+| `LAYERS_S3_BUCKET` | variable | S3 bucket for Lambda layer artifacts |
+| `HASHES_S3_BUCKET` | variable | S3 bucket for hash-based change tracking |
+| `ACCOUNT_NUMBER` | secret | AWS account number |
 
-**Layers:**
-`s3://<bucket>/<layer>`
+## Authentication 🔐
 
-## Reguired variables 🔧
+Authentication is handled via [GitHub OIDC federation](https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services) -- no long-lived AWS credentials are stored in GitHub. The workflow assumes an IAM role (`GitHubActionsDeployRole`) scoped to this repository.
 
-- `FUNCTIONS_S3_BUCKET` (variable): S3 bucket for Lambda functions
-- `LAYERS_S3_BUCKET` (variable): S3 bucket for Lambda layers
-- `HASHES_S3_BUCKET` (variable): S3 bucket for version/hash tracking
-- `ACCOUNT_NUMBER` (secret): Your AWS account number (keep it secret!)
+Infrastructure (IAM roles, S3 buckets, Lambda function shells) is managed in a separate Terraform repository.
 
-## Authentication & Authorization 🔐
+## Testing 🧪
 
-Authentication is handled via GitHub OIDC, and access control is managed through AWS IAM roles.
+Tests run automatically as a validation gate before any deployment.
 
-## Lambda Requirements 🛠️
+```bash
+# Node.js tests (Vitest)
+npm test
 
-- Ensure each Lambda function and layer has a valid `config.json`
-- IAM role must allow Lambda execution and access to CloudWatch Logs
+# Python tests (pytest)
+python -m pytest tests/lambda-layer-cleanup/ -v
+```
+
+## Adding a New Function ➕
+
+1. Create `functions/<app-name>/<function-name>/` with your handler code
+2. Add a `config.json` with `function_name`, `runtime`, `handler`, `role`, and `layers`
+3. Ensure the Lambda function and IAM role exist in AWS (managed via Terraform)
+4. Push to any branch -- the pipeline handles the rest
