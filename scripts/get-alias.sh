@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 
 get_alias() {
   case "$1" in
