@@ -1,13 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Usage: ./expand-config.sh path/to/config.json
+# Usage: source ./expand-config.sh path/to/config.json
 
-CONFIG_FILE="$1"
+CONFIG_FILE="${1:?Usage: expand-config.sh <path/to/config.json>}"
+
+if [[ ! -f "$CONFIG_FILE" ]]; then
+  echo "ERROR: Config file not found: $CONFIG_FILE" >&2
+  return 1
+fi
 
 # Ensure required ENV vars are set
 : "${ACCOUNT_NUMBER:?Missing ACCOUNT_NUMBER env var}"
 : "${REGION:?Missing REGION env var}"
+
+# Validate required fields exist in config.json
+for field in function_name runtime handler role; do
+  value=$(jq -r ".$field // empty" "$CONFIG_FILE")
+  if [[ -z "$value" ]]; then
+    echo "ERROR: Missing required field '$field' in $CONFIG_FILE" >&2
+    return 1
+  fi
+done
 
 # Parse basic fields
 FUNCTION_NAME=$(jq -r .function_name "$CONFIG_FILE")

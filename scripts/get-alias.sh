@@ -1,6 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
+# Usage: ./get-alias.sh <branch-name>
+
+BRANCH="${1:?Usage: get-alias.sh <branch-name>}"
+
 get_alias() {
   case "$1" in
   main)
@@ -16,9 +20,10 @@ get_alias() {
     echo "dev"
     ;;
   *)
+    echo "WARNING: Unrecognized branch pattern '$1', defaulting to 'dev'" >&2
     echo "dev"
     ;;
   esac
 }
 
-get_alias "$1"
+get_alias "$BRANCH"
