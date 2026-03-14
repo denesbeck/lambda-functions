@@ -4,8 +4,21 @@ import validator from "validator";
 import { SSMClient, GetParametersCommand } from "@aws-sdk/client-ssm";
 import { SESClient, SendEmailCommand } from "@aws-sdk/client-ses";
 
-// Fetch secrets from AWS SSM
+// Structured JSON logger
+const log = (level, message, extra = {}) => {
+  const entry = { timestamp: new Date().toISOString(), level, message, ...extra };
+  const output = JSON.stringify(entry);
+  if (level === "error") console.error(output);
+  else if (level === "warn") console.warn(output);
+  else console.log(output);
+};
+
+// Cache SSM secrets at init-phase (once per cold start)
+let cachedParams = null;
+
 const fetchSecrets = async () => {
+  if (cachedParams) return cachedParams;
+
   const client = new SSMClient({ region: process.env.AWS_REGION });
   const input = {
     Names: [
@@ -23,6 +36,9 @@ const fetchSecrets = async () => {
     const key = el.Name.split("/").pop();
     params[key] = el.Value;
   });
+
+  cachedParams = params;
+  log("info", "SSM parameters fetched and cached");
   return params;
 };
 
@@ -43,11 +59,11 @@ const validateCFTurnstile = async (token, secretKey) => {
     );
 
     if (!data.success) {
-      console.warn("CF Turnstile validation failed:", data["error-codes"]);
+      log("warn", "CF Turnstile validation failed", { errorCodes: data["error-codes"] });
     }
     return data.success;
   } catch (err) {
-    console.error("CF Turnstile validation error", err);
+    log("error", "CF Turnstile validation error", { error: err.message });
     return null;
   }
 };
@@ -75,10 +91,10 @@ const sendEmail = async (params, name, email, message) => {
 
   try {
     const response = await client.send(command);
-    console.log("Email sent with SES:", response.MessageId);
+    log("info", "Email sent with SES", { messageId: response.MessageId });
     return true;
   } catch (err) {
-    console.error("SES email sending failed:", err);
+    log("error", "SES email sending failed", { error: err.message });
     return false;
   }
 };
@@ -95,6 +111,7 @@ export const handler = async (event) => {
       !validator.isLength(name, { min: 1, max: 100 }) ||
       !validator.isLength(message, { min: 1, max: 2000 })
     ) {
+      log("warn", "Invalid input", { email, nameLength: name?.length, messageLength: message?.length });
       return {
         statusCode: 400,
         body: JSON.stringify({ message: "Invalid input." }),
@@ -126,12 +143,13 @@ export const handler = async (event) => {
       };
     }
 
+    log("info", "Contact form processed successfully", { email });
     return {
       statusCode: 200,
       body: JSON.stringify({ message: "Success!" }),
     };
   } catch (err) {
-    console.error("Unhandled exception:", err);
+    log("error", "Unhandled exception", { error: err.message, stack: err.stack });
     return {
       statusCode: 500,
       body: JSON.stringify({ message: "Server error." }),
