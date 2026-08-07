@@ -11,7 +11,7 @@
     "@aws-sdk/client-ssm": "^3.1009.0",
     "aws-sdk-client-mock": "^4.1.0",
     "axios": "^1.13.6",
-    "validator": "^13.15.26",
+    "validator": "^13.15.35",
     "vitest": "^4.1.0"
   }
 }
