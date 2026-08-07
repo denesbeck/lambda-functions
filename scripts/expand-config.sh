@@ -14,8 +14,8 @@ fi
 : "${ACCOUNT_NUMBER:?Missing ACCOUNT_NUMBER env var}"
 : "${REGION:?Missing REGION env var}"
 
-# Validate required fields exist in config.json
-for field in function_name runtime handler role; do
+# Validate required fields exist in config.json ('role' is owned by Terraform)
+for field in function_name runtime handler; do
   value=$(jq -r ".$field // empty" "$CONFIG_FILE")
   if [[ -z "$value" ]]; then
     echo "ERROR: Missing required field '$field' in $CONFIG_FILE" >&2
@@ -27,9 +27,6 @@ done
 FUNCTION_NAME=$(jq -r .function_name "$CONFIG_FILE")
 RUNTIME=$(jq -r .runtime "$CONFIG_FILE")
 HANDLER=$(jq -r .handler "$CONFIG_FILE")
-
-ROLE_NAME=$(jq -r .role "$CONFIG_FILE")
-IAM_ROLE_ARN="arn:aws:iam::${ACCOUNT_NUMBER}:role/${ROLE_NAME}"
 
 # Handle region-specific layer parsing
 LAYER_ARNS=""
@@ -56,12 +53,10 @@ echo "Expanded config for $CONFIG_FILE:"
 echo "FUNCTION_NAME=$FUNCTION_NAME"
 echo "RUNTIME=$RUNTIME"
 echo "HANDLER=$HANDLER"
-echo "IAM_ROLE_ARN=$IAM_ROLE_ARN"
 echo "LAYERS=$LAYERS"
 
 # Export for use in calling script
 export FUNCTION_NAME
 export RUNTIME
 export HANDLER
-export IAM_ROLE_ARN
 export LAYERS

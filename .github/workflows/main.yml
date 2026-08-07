@@ -13,21 +13,22 @@ concurrency:
   group: deploy-${{ github.ref_name }}
   cancel-in-progress: false
 
+# Actions pinned to SHAs; Dependabot keeps them current.
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Run ShellCheck
-        uses: ludeeus/action-shellcheck@2.0.0
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
         with:
           scandir: scripts
           severity: warning
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -39,7 +40,7 @@ jobs:
         run: npm test
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.13"
           cache: pip
@@ -64,32 +65,35 @@ jobs:
       LAYERS_S3_BUCKET: ${{ vars.LAYERS_S3_BUCKET }}
       REGION: ${{ matrix.region }}
       ACCOUNT_NUMBER: ${{ secrets.ACCOUNT_NUMBER }}
+      BRANCH: ${{ github.ref_name }}
+      COMMIT_SHA: ${{ github.sha }}
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
       - name: Set up AWS credentials
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5
         with:
           role-to-assume: arn:aws:iam::${{ secrets.ACCOUNT_NUMBER }}:role/GitHubActionsDeployRole
           aws-region: ${{ matrix.region }}
 
       - name: Get changed layer directories
         id: layer_dirs
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.event.after }}
         run: |
           echo "Detecting changed layer directories..."
-          BEFORE=${{ github.event.before }}
-          AFTER=${{ github.event.after }}
           DIRS=""
 
-          if git cat-file -e "$BEFORE"^{commit} &>/dev/null; then
-            echo "Commit $BEFORE found."
-            DIRS=$(git diff --name-only "$BEFORE" "$AFTER" | awk -F/ '$1 == "layers" && NF>=2 && $1 !~ /^\./ && $2 !~ /^\./ {print $1 "/" $2}' | sort -u)
+          if git cat-file -e "$BEFORE_SHA"^{commit} &>/dev/null; then
+            echo "Commit $BEFORE_SHA found."
+            DIRS=$(git diff --name-only "$BEFORE_SHA" "$AFTER_SHA" | awk -F/ '$1 == "layers" && NF>=2 && $1 !~ /^\./ && $2 !~ /^\./ {print $1 "/" $2}' | sort -u)
           else
-            echo "Commit $BEFORE NOT found. First commit."
+            echo "Commit $BEFORE_SHA NOT found. First commit."
             DIRS=$(find . -mindepth 2 -maxdepth 2 -type d -not -path '*/.*' | cut -c 3- | sort -u | awk -F/ '$1 == "layers"')
           fi
 
@@ -105,12 +109,12 @@ jobs:
 
       - name: Package and deploy layers
         if: steps.layer_dirs.outputs.dirs != ''
+        env:
+          LAYER_DIRS: ${{ steps.layer_dirs.outputs.dirs }}
         run: |
           set -euo pipefail
 
           TIMESTAMP=$(date +%Y%m%d%H%M%S)
-          COMMIT_SHA=${{ github.sha }}
-          BRANCH="${{ github.ref_name }}"
 
           DEPLOY_ALIAS=$(./scripts/get-alias.sh "$BRANCH")
           echo "Branch '$BRANCH' will deploy to alias: $DEPLOY_ALIAS"
@@ -161,7 +165,7 @@ jobs:
             rm "$ZIP_FILE"
             echo "::endgroup::"
 
-          done <<< "${{ steps.layer_dirs.outputs.dirs }}"
+          done <<< "$LAYER_DIRS"
 
   deploy-functions:
     needs: [validate, deploy-layers]
@@ -177,15 +181,17 @@ jobs:
       HASHES_S3_BUCKET: ${{ vars.HASHES_S3_BUCKET }}
       REGION: ${{ matrix.region }}
       ACCOUNT_NUMBER: ${{ secrets.ACCOUNT_NUMBER }}
+      BRANCH: ${{ github.ref_name }}
+      COMMIT_SHA: ${{ github.sha }}
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
       - name: Set up AWS credentials
-        uses: aws-actions/configure-aws-credentials@v5
+        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5
         with:
           role-to-assume: arn:aws:iam::${{ secrets.ACCOUNT_NUMBER }}:role/GitHubActionsDeployRole
           aws-region: ${{ matrix.region }}
@@ -193,7 +199,6 @@ jobs:
       - name: Download previous hash files from S3
         run: |
           mkdir -p .hash-cache
-          BRANCH="${{ github.ref_name }}"
           find functions -mindepth 2 -maxdepth 2 -type d | while read -r func_dir; do
             APP=$(basename "$(dirname "$func_dir")")
             FUNC=$(basename "$func_dir")
@@ -225,12 +230,12 @@ jobs:
 
       - name: Deploy Lambda functions
         if: steps.function_dirs.outputs.dirs != ''
+        env:
+          FUNCTION_DIRS: ${{ steps.function_dirs.outputs.dirs }}
         run: |
           set -euo pipefail
 
           TIMESTAMP=$(date +%Y%m%d%H%M%S)
-          COMMIT_SHA=${{ github.sha }}
-          BRANCH="${{ github.ref_name }}"
 
           DEPLOY_ALIAS=$(./scripts/get-alias.sh "$BRANCH")
           echo "Branch '$BRANCH' will deploy to alias: $DEPLOY_ALIAS"
@@ -342,11 +347,11 @@ jobs:
 
             if [[ "$UPDATE_CONFIG" == true ]]; then
               echo "Updating configuration for ${FUNCTION_NAME}..."
+              # NOTE: no --role by design; Terraform owns execution roles.
               aws lambda update-function-configuration \
                 --function-name "$FUNCTION_NAME" \
                 --runtime "$RUNTIME" \
                 --handler "$HANDLER" \
-                --role "$IAM_ROLE_ARN" \
                 --layers $LAYERS \
                 --region "$REGION"
 
@@ -356,11 +361,10 @@ jobs:
             fi
 
             echo "::endgroup::"
-          done <<< "${{ steps.function_dirs.outputs.dirs }}"
+          done <<< "$FUNCTION_DIRS"
 
       - name: Upload updated hash files to S3
         run: |
-          BRANCH="${{ github.ref_name }}"
           find functions -type f \( -name ".code.hash" -o -name ".config.hash" \) | while read -r file; do
             APP=$(basename "$(dirname "$(dirname "$file")")")
             FUNC=$(basename "$(dirname "$file")")

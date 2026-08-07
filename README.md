@@ -65,7 +65,6 @@ tests/
   "function_name": "MyFunction",
   "runtime": "nodejs22.x",
   "handler": "index.handler",
-  "role": "MyLambdaExecutionRole",
   "layers": [
     {
       "eu-central-1": ["MyLayer:1"],
@@ -80,8 +79,9 @@ tests/
 | `function_name` | AWS Lambda function name |
 | `runtime` | Lambda runtime (e.g. `nodejs22.x`, `python3.13`) |
 | `handler` | Entry point (e.g. `index.handler`) |
-| `role` | IAM role name (ARN is constructed automatically) |
 | `layers` | Region-specific layer versions in `LayerName:Version` format |
+
+The execution role, `timeout`, and `memory_size` are owned by Terraform, not set here.
 
 ## Layer `config.json` ⚙️
 

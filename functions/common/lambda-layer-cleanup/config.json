@@ -2,6 +2,5 @@
   "function_name": "LambdaLayerCleanup",
   "runtime": "python3.13",
   "handler": "lambda_function.cleanup_lambda_layer_versions",
-  "role": "LambdaLayerCleanupRole",
   "layers": []
 }
