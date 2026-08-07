@@ -54,6 +54,9 @@ jobs:
 
   deploy-layers:
     needs: validate
+    # Dependabot runs get the Dependabot secret store, not Actions secrets, so
+    # they cannot authenticate to AWS — and a dependency bump should not deploy.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -169,6 +172,7 @@ jobs:
 
   deploy-functions:
     needs: [validate, deploy-layers]
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     strategy:
       matrix:
