@@ -11,7 +11,7 @@ A GitHub Actions CI/CD pipeline for deploying AWS Lambda functions and layers ac
 - **Lambda versioning** -- every deploy publishes a new version and updates the alias
 - **Layer change detection** -- layers are only redeployed when their source files change (`git diff`)
 - **Multi-runtime support** -- Node.js, Python, Go, Ruby
-- **Validation gate** -- ShellCheck linting, Node.js tests (Vitest), and Python tests (pytest) must pass before deploy
+- **Validation gate** -- ShellCheck linting must pass before deploy
 - **Concurrency control** -- prevents simultaneous deploys to the same branch
 - **OIDC authentication** -- keyless AWS access via GitHub Actions OIDC federation
 - **Structured JSON logging** -- all Lambda functions output JSON logs for CloudWatch Insights
@@ -23,7 +23,7 @@ push to any branch
         |
         v
     validate
-    (ShellCheck + Node.js tests + Python tests)
+    (ShellCheck)
         |
         v
     deploy-layers  (matrix: us-east-1, eu-central-1)
@@ -53,9 +53,6 @@ scripts/
   generate-function-hashes.sh  # SHA-256 hashing for change detection
   get-alias.sh              # Maps git branch to Lambda alias
   install-packages.sh       # Multi-runtime package installer
-tests/
-  contact/                  # Unit tests for contact handler (Vitest)
-  lambda-layer-cleanup/     # Unit tests for cleanup function (pytest)
 ```
 
 ## Function `config.json` ⚙️
@@ -136,21 +133,9 @@ Authentication is handled via [GitHub OIDC federation](https://docs.github.com/e
 
 Infrastructure (IAM roles, S3 buckets, Lambda function shells) is managed in a separate Terraform repository.
 
-## Testing 🧪
-
-Tests run automatically as a validation gate before any deployment.
-
-```bash
-# Node.js tests (Vitest)
-npm test
-
-# Python tests (pytest)
-python -m pytest tests/lambda-layer-cleanup/ -v
-```
-
 ## Adding a New Function ➕
 
 1. Create `functions/<app-name>/<function-name>/` with your handler code
-2. Add a `config.json` with `function_name`, `runtime`, `handler`, `role`, and `layers`
+2. Add a `config.json` with `function_name`, `runtime`, `handler`, and `layers`
 3. Ensure the Lambda function and IAM role exist in AWS (managed via Terraform)
 4. Push to any branch -- the pipeline handles the rest
