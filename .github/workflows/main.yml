@@ -125,7 +125,7 @@ jobs:
 
       - name: Set up AWS credentials
         if: steps.layer_dirs.outputs.dirs != ''
-        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
           role-to-assume: arn:aws:iam::${{ secrets.ACCOUNT_NUMBER }}:role/GitHubActionsDeployRole
           aws-region: ${{ matrix.region }}
@@ -208,7 +208,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up AWS credentials
-        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
           role-to-assume: arn:aws:iam::${{ secrets.ACCOUNT_NUMBER }}:role/GitHubActionsDeployRole
           aws-region: ${{ matrix.region }}
