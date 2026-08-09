@@ -20,8 +20,8 @@ get_alias() {
     echo "dev"
     ;;
   *)
-    echo "WARNING: Unrecognized branch pattern '$1', defaulting to 'dev'" >&2
-    echo "dev"
+    echo "ERROR: Unrecognized branch pattern '$1'. Expected main, test/*, release/* or feature/*" >&2
+    exit 1
     ;;
   esac
 }

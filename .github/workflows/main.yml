@@ -3,10 +3,12 @@ name: Deploy Lambda
 on:
   push:
     branches:
-      - "**"
+      - main
+      - "test/**"
+      - "release/**"
+      - "feature/**"
 
 permissions:
-  id-token: write
   contents: read
 
 concurrency:
@@ -33,6 +35,9 @@ jobs:
     # they cannot authenticate to AWS — and a dependency bump should not deploy.
     if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     strategy:
       matrix:
         region: [us-east-1, eu-central-1]
@@ -51,12 +56,6 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
-
-      - name: Set up AWS credentials
-        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5
-        with:
-          role-to-assume: arn:aws:iam::${{ secrets.ACCOUNT_NUMBER }}:role/GitHubActionsDeployRole
-          aws-region: ${{ matrix.region }}
 
       - name: Get changed layer directories
         id: layer_dirs
@@ -85,7 +84,10 @@ jobs:
             echo "EOF" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Package and deploy layers
+      # Layers are installed and zipped BEFORE AWS credentials exist in the job,
+      # so package-manager lifecycle scripts (npm/pip/bundler) never run with
+      # access to the deploy role's credentials.
+      - name: Package layers
         if: steps.layer_dirs.outputs.dirs != ''
         env:
           LAYER_DIRS: ${{ steps.layer_dirs.outputs.dirs }}
@@ -93,9 +95,7 @@ jobs:
           set -euo pipefail
 
           TIMESTAMP=$(date +%Y%m%d%H%M%S)
-
-          DEPLOY_ALIAS=$(./scripts/get-alias.sh "$BRANCH")
-          echo "Branch '$BRANCH' will deploy to alias: $DEPLOY_ALIAS"
+          echo "TIMESTAMP=$TIMESTAMP" >> "$GITHUB_ENV"
 
           while IFS= read -r path; do
             LAYER=$(basename "$path")
@@ -106,15 +106,10 @@ jobs:
               continue
             fi
 
-            LAYER_NAME=$(jq -r .name "$CONFIG_FILE")
-            DESCRIPTION=$(jq -r .description "$CONFIG_FILE")
             TYPE=$(jq -r .type "$CONFIG_FILE")
-            COMPATIBLE_RUNTIMES=$(jq -r '.runtimes | join(" ")' "$CONFIG_FILE")
-
             ZIP_FILE="${LAYER}-${TIMESTAMP}-${COMMIT_SHA}.zip"
-            S3_KEY="${LAYER}/${ZIP_FILE}"
 
-            echo "::group::Deploy layer: $LAYER_NAME"
+            echo "::group::Package layer: $LAYER"
 
             echo "Installing packages for $path..."
             cd "$path"
@@ -123,6 +118,46 @@ jobs:
             echo "Zipping $path..."
             zip -r "../../$ZIP_FILE" . > /dev/null
             cd - > /dev/null
+
+            echo "::endgroup::"
+
+          done <<< "$LAYER_DIRS"
+
+      - name: Set up AWS credentials
+        if: steps.layer_dirs.outputs.dirs != ''
+        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.ACCOUNT_NUMBER }}:role/GitHubActionsDeployRole
+          aws-region: ${{ matrix.region }}
+
+      - name: Upload and publish layers
+        if: steps.layer_dirs.outputs.dirs != ''
+        env:
+          LAYER_DIRS: ${{ steps.layer_dirs.outputs.dirs }}
+        run: |
+          set -euo pipefail
+
+          while IFS= read -r path; do
+            LAYER=$(basename "$path")
+
+            CONFIG_FILE="${path}/config.json"
+            if [[ ! -f "$CONFIG_FILE" ]]; then
+              continue
+            fi
+
+            LAYER_NAME=$(jq -r .name "$CONFIG_FILE")
+            DESCRIPTION=$(jq -r .description "$CONFIG_FILE")
+            COMPATIBLE_RUNTIMES=$(jq -r '.runtimes | join(" ")' "$CONFIG_FILE")
+
+            ZIP_FILE="${LAYER}-${TIMESTAMP}-${COMMIT_SHA}.zip"
+            S3_KEY="${LAYER}/${ZIP_FILE}"
+
+            if [[ ! -f "$ZIP_FILE" ]]; then
+              echo "WARNING: No package for $path, skipping..." >&2
+              continue
+            fi
+
+            echo "::group::Deploy layer: $LAYER_NAME"
 
             echo "Uploading to s3://${LAYERS_S3_BUCKET}/${S3_KEY}"
             aws s3 cp --region "$REGION" "$ZIP_FILE" "s3://${LAYERS_S3_BUCKET}/${S3_KEY}"
@@ -149,6 +184,9 @@ jobs:
     needs: [validate, deploy-layers]
     if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     strategy:
       matrix:
         region: [us-east-1, eu-central-1]
