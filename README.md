@@ -19,7 +19,7 @@ A GitHub Actions CI/CD pipeline for deploying AWS Lambda functions and layers ac
 ## Pipeline 🔄
 
 ```
-push to any branch
+push to main, test/**, release/** or feature/**
         |
         v
     validate
@@ -138,4 +138,4 @@ Infrastructure (IAM roles, S3 buckets, Lambda function shells) is managed in a s
 1. Create `functions/<app-name>/<function-name>/` with your handler code
 2. Add a `config.json` with `function_name`, `runtime`, `handler`, and `layers`
 3. Ensure the Lambda function and IAM role exist in AWS (managed via Terraform)
-4. Push to any branch -- the pipeline handles the rest
+4. Push to a recognized branch (`main`, `test/*`, `release/*`, `feature/*`) -- the pipeline handles the rest
