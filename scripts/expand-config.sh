@@ -14,19 +14,20 @@ fi
 : "${ACCOUNT_NUMBER:?Missing ACCOUNT_NUMBER env var}"
 : "${REGION:?Missing REGION env var}"
 
-# Validate required fields exist in config.json ('role' is owned by Terraform)
-for field in function_name runtime handler; do
-  value=$(jq -r ".$field // empty" "$CONFIG_FILE")
-  if [[ -z "$value" ]]; then
-    echo "ERROR: Missing required field '$field' in $CONFIG_FILE" >&2
+# This repo owns only function code and layer attachment. The function itself
+# (name, runtime, handler, role, memory, timeout, env) is defined in Terraform.
+for field in function_name runtime handler role; do
+  if jq -e "has(\"$field\")" "$CONFIG_FILE" >/dev/null; then
+    echo "ERROR: '$field' in $CONFIG_FILE is owned by Terraform (lambda-functions-tf), remove it" >&2
     return 1
   fi
 done
 
-# Parse basic fields
-FUNCTION_NAME=$(jq -r .function_name "$CONFIG_FILE")
-RUNTIME=$(jq -r .runtime "$CONFIG_FILE")
-HANDLER=$(jq -r .handler "$CONFIG_FILE")
+# The directory name is the kebab-case form of the Terraform function name,
+# mirroring Terraform's replace(title(name), "-", ""):
+# functions/<app>/lambda-layer-cleanup -> LambdaLayerCleanup
+LAMBDA_DIR=$(basename "$(dirname "$CONFIG_FILE")")
+FUNCTION_NAME=$(echo "$LAMBDA_DIR" | awk -F- '{for (i = 1; i <= NF; i++) $i = toupper(substr($i, 1, 1)) substr($i, 2)} 1' OFS="")
 
 # Handle region-specific layer parsing
 LAYER_ARNS=""
@@ -51,12 +52,8 @@ fi
 # Output values for debug/logging
 echo "Expanded config for $CONFIG_FILE:"
 echo "FUNCTION_NAME=$FUNCTION_NAME"
-echo "RUNTIME=$RUNTIME"
-echo "HANDLER=$HANDLER"
 echo "LAYERS=$LAYERS"
 
 # Export for use in calling script
 export FUNCTION_NAME
-export RUNTIME
-export HANDLER
 export LAYERS

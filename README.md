@@ -59,9 +59,6 @@ scripts/
 
 ```json
 {
-  "function_name": "MyFunction",
-  "runtime": "nodejs22.x",
-  "handler": "index.handler",
   "layers": [
     {
       "eu-central-1": ["MyLayer:1"],
@@ -73,12 +70,14 @@ scripts/
 
 | Field | Description |
 |-------|-------------|
-| `function_name` | AWS Lambda function name |
-| `runtime` | Lambda runtime (e.g. `nodejs22.x`, `python3.13`) |
-| `handler` | Entry point (e.g. `index.handler`) |
 | `layers` | Region-specific layer versions in `LayerName:Version` format |
 
-The execution role, `timeout`, and `memory_size` are owned by Terraform, not set here.
+The function itself is owned by Terraform (`lambda-functions-tf`): name, `runtime`,
+`handler`, execution role, `timeout`, `memory_size`, environment. This repo owns only
+the code and the layer attachment above. The function name is derived from the
+directory name — `functions/<app>/my-function` deploys to `MyFunction`, matching
+Terraform's `replace(title(name), "-", "")`. Directory names must therefore be
+unique across apps.
 
 ## Layer `config.json` ⚙️
 
@@ -135,7 +134,8 @@ Infrastructure (IAM roles, S3 buckets, Lambda function shells) is managed in a s
 
 ## Adding a New Function ➕
 
-1. Create `functions/<app-name>/<function-name>/` with your handler code
-2. Add a `config.json` with `function_name`, `runtime`, `handler`, and `layers`
+1. Create `functions/<app-name>/<function-name>/` with your handler code — the
+   kebab-case directory name maps to the function name defined in Terraform
+2. Add a `config.json` with `layers` (empty list if none)
 3. Ensure the Lambda function and IAM role exist in AWS (managed via Terraform)
 4. Push to a recognized branch (`main`, `test/*`, `release/*`, `feature/*`) -- the pipeline handles the rest
